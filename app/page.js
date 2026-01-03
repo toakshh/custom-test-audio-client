@@ -33,7 +33,7 @@ export default function Home() {
 
   // Hooks
   const { metricsHistory, addMetrics, clearMetrics, deleteMetric, getProviderComparison, getLLMComparison } = useMetrics();
-  const { isPlaying, playAudio, queueAudio, scheduleStreamingAudio, stopAudio, resetStreaming, queueLength } = useAudioPlayer();
+  const { isPlaying, playAudio, addSequenceAudio, markSequenceComplete, resetPlayer, stopAudio } = useAudioPlayer();
 
   // Streaming TTS mode (for providers that support it like Inworld)
   const [streamTTS, setStreamTTS] = useState(false);
@@ -175,8 +175,8 @@ export default function Home() {
     setResponse('');
     setCurrentMetrics({ llmMetrics: null, ttsMetrics: null, totalTime: null });
     
-    // Reset streaming audio state for seamless playback
-    resetStreaming();
+    // Reset audio player for new stream
+    resetPlayer();
 
     try {
       const res = await fetch('/api/stream', {
@@ -189,7 +189,7 @@ export default function Home() {
           ttsProvider,
           voiceId: ttsVoice,
           enableTTS: true,
-          streamTTS: streamTTS && ttsProvider === 'inworld', // Enable streaming TTS for Inworld
+          streamTTS: streamTTS && ttsProvider === 'inworld',
         }),
       });
 
@@ -215,15 +215,12 @@ export default function Home() {
               if (data.type === 'text') {
                 setResponse((prev) => prev + data.content);
               } else if (data.type === 'audio') {
-                // Use streaming audio scheduling for seamless playback
-                if (data.streaming) {
-                  scheduleStreamingAudio(data.audio, data.contentType);
-                } else {
-                  queueAudio(data.audio, data.contentType);
-                }
+                // Add audio to sequence buffer
+                addSequenceAudio(data.playSequence, data.audio, data.contentType);
                 lastTtsMetrics = data.metrics;
-              } else if (data.type === 'tts_metrics') {
-                lastTtsMetrics = data.metrics;
+              } else if (data.type === 'audio_complete') {
+                // Mark sequence as complete - ready to play in order
+                markSequenceComplete(data.playSequence);
               } else if (data.type === 'done') {
                 llmMetrics = data.llmMetrics;
                 const totalTime = Date.now() - startTime;
@@ -246,6 +243,8 @@ export default function Home() {
                 throw new Error(data.error);
               } else if (data.type === 'tts_error') {
                 console.error('TTS error:', data.error);
+                // Mark failed sequence as complete so playback continues
+                markSequenceComplete(data.playSequence);
               }
             } catch (e) {
               // Skip invalid JSON
@@ -334,7 +333,6 @@ export default function Home() {
               isStreaming={isStreaming}
               onStopAudio={stopAudio}
               isPlaying={isPlaying}
-              queueLength={queueLength}
             />
 
             {/* Current Metrics */}

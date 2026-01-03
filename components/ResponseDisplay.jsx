@@ -1,6 +1,6 @@
 'use client';
 
-export function ResponseDisplay({ response, isStreaming, onStopAudio, isPlaying, queueLength }) {
+export function ResponseDisplay({ response, isStreaming, onStopAudio, isPlaying }) {
   if (!response && !isStreaming) {
     return (
       <div className="p-8 bg-gray-800/30 rounded-lg border border-gray-700 text-center text-gray-500">
@@ -22,13 +22,13 @@ export function ResponseDisplay({ response, isStreaming, onStopAudio, isPlaying,
             </span>
           )}
         </div>
-        {(isPlaying || queueLength > 0) && (
+        {isPlaying && (
           <button
             onClick={onStopAudio}
             className="px-3 py-1 text-sm bg-red-500/20 text-red-400 rounded hover:bg-red-500/30 transition-colors flex items-center gap-1"
           >
             <StopIcon />
-            Stop Audio {queueLength > 0 && `(${queueLength} queued)`}
+            Stop Audio
           </button>
         )}
       </div>

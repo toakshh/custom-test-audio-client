@@ -33,17 +33,12 @@ export async function POST(request) {
         let textBuffer = '';
         let llmMetrics = null;
         const CHUNK_SIZE = 100;
-        
-        // Sequential queue for TTS processing
-        const ttsQueue = [];
-        let chunkIndex = 0;
+        let playSequence = 0;
+        const ttsPromises = [];
 
-        // Process TTS sequentially in order
-        const processTTSQueue = async () => {
-          for (const item of ttsQueue) {
-            const { text, index } = item;
-            if (!text.trim()) continue;
-
+        // Start TTS for a text chunk with assigned sequence number
+        const startTTS = (text, sequence) => {
+          const promise = (async () => {
             try {
               if (streamTTS && typeof tts.streamSynthesize === 'function') {
                 for await (const chunk of tts.streamSynthesize(text, { voiceId })) {
@@ -53,17 +48,9 @@ export async function POST(request) {
                         type: 'audio', 
                         audio: chunk.audio.toString('base64'),
                         contentType: chunk.contentType,
-                        chunkIndex: index,
+                        playSequence: sequence,
                         streaming: true,
                         timestampInfo: chunk.timestampInfo,
-                      })}\n\n`
-                    ));
-                  } else if (chunk.type === 'done') {
-                    controller.enqueue(encoder.encode(
-                      `data: ${JSON.stringify({ 
-                        type: 'tts_metrics', 
-                        chunkIndex: index,
-                        metrics: chunk.metrics,
                       })}\n\n`
                     ));
                   }
@@ -75,40 +62,44 @@ export async function POST(request) {
                     type: 'audio', 
                     audio: audioResult.audio.toString('base64'),
                     contentType: audioResult.contentType,
-                    chunkIndex: index,
+                    playSequence: sequence,
                     metrics: audioResult.metrics,
-                    timestampInfo: audioResult.timestampInfo,
                   })}\n\n`
                 ));
               }
-            } catch (ttsError) {
-              console.error('TTS chunk error:', ttsError);
+              // Signal this sequence is complete
               controller.enqueue(encoder.encode(
-                `data: ${JSON.stringify({ type: 'tts_error', chunkIndex: index, error: ttsError.message })}\n\n`
+                `data: ${JSON.stringify({ type: 'audio_complete', playSequence: sequence })}\n\n`
+              ));
+            } catch (ttsError) {
+              console.error('TTS error:', ttsError);
+              controller.enqueue(encoder.encode(
+                `data: ${JSON.stringify({ type: 'tts_error', playSequence: sequence, error: ttsError.message })}\n\n`
               ));
             }
-          }
+          })();
+          ttsPromises.push(promise);
         };
 
         try {
-          // Stream LLM response - collect text chunks first
+          // Stream LLM and start TTS in parallel
           for await (const chunk of llm.streamResponse(prompt, { model: llmModel, ...options })) {
             if (chunk.type === 'chunk') {
               fullText += chunk.content;
               textBuffer += chunk.content;
 
-              // Send text chunk to client immediately
+              // Send text chunk to client
               controller.enqueue(encoder.encode(
                 `data: ${JSON.stringify({ type: 'text', content: chunk.content })}\n\n`
               ));
 
-              // Queue TTS at sentence boundaries
+              // Start TTS when buffer reaches threshold
               if (enableTTS && tts && textBuffer.length >= CHUNK_SIZE) {
                 const breakPoint = findBreakPoint(textBuffer);
                 if (breakPoint > 0) {
                   const textToSpeak = textBuffer.substring(0, breakPoint);
                   textBuffer = textBuffer.substring(breakPoint);
-                  ttsQueue.push({ text: textToSpeak, index: chunkIndex++ });
+                  startTTS(textToSpeak, playSequence++);
                 }
               }
             } else if (chunk.type === 'done') {
@@ -116,13 +107,18 @@ export async function POST(request) {
             }
           }
 
-          // Queue remaining text
+          // Process remaining text
           if (enableTTS && tts && textBuffer.trim().length > 0) {
-            ttsQueue.push({ text: textBuffer, index: chunkIndex++ });
+            startTTS(textBuffer, playSequence++);
           }
 
-          // Process all TTS in sequence
-          await processTTSQueue();
+          // Send total sequence count so client knows when all audio is received
+          controller.enqueue(encoder.encode(
+            `data: ${JSON.stringify({ type: 'tts_total', totalSequences: playSequence })}\n\n`
+          ));
+
+          // Wait for all TTS to complete
+          await Promise.all(ttsPromises);
 
           // Send completion event
           controller.enqueue(encoder.encode(
