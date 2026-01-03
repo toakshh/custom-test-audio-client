@@ -1,36 +1,135 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# AI Voice Assistant
 
-## Getting Started
+Multi-provider LLM + TTS system with real-time streaming and comprehensive metrics.
 
-First, run the development server:
+## Features
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- **Multiple LLM Providers**: OpenAI, Google Gemini, Anthropic Claude
+- **Multiple TTS Providers**: ElevenLabs, Inworld AI (extensible)
+- **Real-time Streaming**: Parallel text generation and speech synthesis
+- **Comprehensive Metrics**: Latency tracking, token usage, comparison charts
+- **Auto-play Audio**: Automatic playback with queue management
+- **Model Selection**: Switch between models/voices on the fly
+
+## Architecture
+
+```
+Frontend (Next.js App Router)
+├── Query Input + Provider Selectors
+├── Response Display + Audio Player
+└── Metrics Dashboard (last 20 requests)
+
+Backend (API Routes)
+├── /api/chat - Standard LLM requests
+├── /api/tts - Text-to-speech conversion
+├── /api/stream - Real-time streaming with parallel TTS
+└── /api/providers - Available providers/models/voices
+
+Provider Registry (Extensible)
+├── LLM: OpenAI, Gemini, Claude
+└── TTS: ElevenLabs, Inworld
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Setup
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+1. Install dependencies:
+```bash
+npm install
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+2. Create `.env.local` from `.env.example`:
+```bash
+cp .env.example .env.local
+```
 
-## Learn More
+3. Add your API keys to `.env.local`:
+```env
+OPENAI_API_KEY=sk-your-key
+GEMINI_API_KEY=your-key
+ANTHROPIC_API_KEY=sk-ant-your-key
+ELEVENLABS_API_KEY=your-key
+INWORLD_API_KEY=your-key
+```
 
-To learn more about Next.js, take a look at the following resources:
+4. Run the development server:
+```bash
+npm run dev
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Adding New Providers
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### New LLM Provider
 
-## Deploy on Vercel
+1. Create `lib/providers/llm/your-provider.js`:
+```javascript
+import { BaseLLMProvider } from '../base';
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+export class YourProvider extends BaseLLMProvider {
+  getAvailableModels() { /* return models */ }
+  async generateResponse(prompt, options) { /* implement */ }
+  async *streamResponse(prompt, options) { /* implement */ }
+}
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+2. Register in `lib/providers/registry.js`:
+```javascript
+import { YourProvider } from './llm/your-provider';
+this.registerLLMProvider('yourprovider', YourProvider);
+```
+
+### New TTS Provider
+
+1. Create `lib/providers/tts/your-provider.js`:
+```javascript
+import { BaseTTSProvider } from '../base';
+
+export class YourTTSProvider extends BaseTTSProvider {
+  getAvailableVoices() { /* return voices */ }
+  async synthesize(text, options) { /* implement */ }
+  async *streamSynthesize(text, options) { /* implement */ }
+}
+```
+
+2. Register in `lib/providers/registry.js`:
+```javascript
+import { YourTTSProvider } from './tts/your-provider';
+this.registerTTSProvider('yourprovider', YourTTSProvider);
+```
+
+## API Reference
+
+### POST /api/chat
+Standard LLM request.
+```json
+{
+  "prompt": "Your question",
+  "provider": "openai",
+  "model": "gpt-4o-mini"
+}
+```
+
+### POST /api/tts
+Text-to-speech conversion.
+```json
+{
+  "text": "Text to speak",
+  "provider": "elevenlabs",
+  "voiceId": "EXAVITQu4vr4xnSDxMaL"
+}
+```
+
+### POST /api/stream
+Real-time streaming with parallel TTS.
+```json
+{
+  "prompt": "Your question",
+  "llmProvider": "openai",
+  "llmModel": "gpt-4o-mini",
+  "ttsProvider": "elevenlabs",
+  "voiceId": "EXAVITQu4vr4xnSDxMaL",
+  "enableTTS": true
+}
+```
+
+### GET /api/providers
+Get available providers, models, and voices.
