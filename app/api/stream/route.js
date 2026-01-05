@@ -2,6 +2,19 @@
 
 import { registry } from '@/lib/providers/registry';
 
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "http://localhost:3013",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+};
+
+export async function OPTIONS() {
+  return new Response(null, {
+    status: 204,
+    headers: corsHeaders,
+  });
+}
+
 export async function POST(request) {
   try {
     const { 
@@ -36,13 +49,25 @@ export async function POST(request) {
         let playSequence = 0;
         const ttsPromises = [];
 
+        // TTS timing metrics
+        let firstTtsStartTime = null;  // When first TTS request started
+        let firstTtsChunkTime = null;  // When first TTS audio chunk was ready
+
         // Start TTS for a text chunk with assigned sequence number
         const startTTS = (text, sequence) => {
+          const ttsStartTime = Date.now();
+          if (firstTtsStartTime === null) {
+            firstTtsStartTime = ttsStartTime;
+          }
+          
           const promise = (async () => {
             try {
               if (streamTTS && typeof tts.streamSynthesize === 'function') {
                 for await (const chunk of tts.streamSynthesize(text, { voiceId })) {
                   if (chunk.type === 'chunk') {
+                    if (firstTtsChunkTime === null) {
+                      firstTtsChunkTime = Date.now();
+                    }
                     controller.enqueue(encoder.encode(
                       `data: ${JSON.stringify({ 
                         type: 'audio', 
@@ -57,6 +82,10 @@ export async function POST(request) {
                 }
               } else {
                 const audioResult = await tts.synthesize(text, { voiceId });
+                if (firstTtsChunkTime === null) {
+                  firstTtsChunkTime = Date.now();
+                }
+                
                 controller.enqueue(encoder.encode(
                   `data: ${JSON.stringify({ 
                     type: 'audio', 
@@ -120,12 +149,23 @@ export async function POST(request) {
           // Wait for all TTS to complete
           await Promise.all(ttsPromises);
 
+          // Calculate TTS latency: time from first TTS request to first audio chunk
+          const ttsLatencyMs = (firstTtsStartTime && firstTtsChunkTime) 
+            ? firstTtsChunkTime - firstTtsStartTime 
+            : null;
+
+          // Build final TTS metrics
+          const finalTtsMetrics = ttsLatencyMs !== null ? {
+            latencyMs: ttsLatencyMs,
+          } : null;
+
           // Send completion event
           controller.enqueue(encoder.encode(
             `data: ${JSON.stringify({ 
               type: 'done',
               fullText,
               llmMetrics,
+              ttsMetrics: finalTtsMetrics,
               totalTime: Date.now() - startTime
             })}\n\n`
           ));
@@ -142,6 +182,7 @@ export async function POST(request) {
 
     return new Response(stream, {
       headers: {
+        ...corsHeaders,
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
         'Connection': 'keep-alive',

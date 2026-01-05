@@ -182,12 +182,29 @@ export function MetricsHistory({ history, onClear, onDelete, getProviderComparis
               >
                 {/* Tooltip */}
                 {isHovered && (
-                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-10 w-64 p-3 bg-gray-900 border border-gray-600 rounded-lg shadow-xl text-xs">
-                    <div className="font-semibold text-white mb-2 truncate">
-                      {entry.query || entry.responseText?.slice(0, 50) || 'No text'}
-                      {(entry.query?.length > 50 || entry.responseText?.length > 50) && '...'}
-                    </div>
-                    <div className="space-y-1">
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-10 w-80 p-3 bg-gray-900 border border-gray-600 rounded-lg shadow-xl text-xs">
+                    {/* User Query */}
+                    {entry.query && (
+                      <div className="mb-3">
+                        <div className="text-gray-400 text-[10px] uppercase tracking-wide mb-1">User Query</div>
+                        <div className="text-white bg-gray-800/50 p-2 rounded line-clamp-4">
+                          {entry.query}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* LLM Response */}
+                    {entry.responseText && (
+                      <div className="mb-3">
+                        <div className="text-gray-400 text-[10px] uppercase tracking-wide mb-1">LLM Response</div>
+                        <div className="text-gray-300 bg-gray-800/50 p-2 rounded line-clamp-4">
+                          {entry.responseText}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Latency Metrics */}
+                    <div className="space-y-1 pt-2 border-t border-gray-700">
                       <div className={`flex justify-between ${llmColor.text}`}>
                         <span>{entry.llmProvider || 'LLM'}:</span>
                         <span className="font-mono">{(llmLatency / 1000).toFixed(2)}s</span>
@@ -201,11 +218,6 @@ export function MetricsHistory({ history, onClear, onDelete, getProviderComparis
                         <span className="font-mono">{((entry.totalTime || 0) / 1000).toFixed(2)}s</span>
                       </div>
                     </div>
-                    {entry.responseText && (
-                      <div className="mt-2 pt-2 border-t border-gray-700 text-gray-400 line-clamp-3">
-                        {entry.responseText.slice(0, 150)}{entry.responseText.length > 150 && '...'}
-                      </div>
-                    )}
                     <div className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-l-8 border-r-8 border-t-8 border-transparent border-t-gray-600" />
                   </div>
                 )}

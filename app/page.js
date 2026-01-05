@@ -155,6 +155,8 @@ export default function Home() {
         llmMetrics,
         ttsMetrics,
         totalTime,
+        query,
+        responseText: chatData.text,
       });
 
       // Play audio
@@ -178,6 +180,8 @@ export default function Home() {
     // Reset audio player for new stream
     resetPlayer();
 
+    let fullResponseText = '';
+
     try {
       const res = await fetch('/api/stream', {
         method: 'POST',
@@ -197,7 +201,7 @@ export default function Home() {
       const decoder = new TextDecoder();
       let buffer = '';
       let llmMetrics = null;
-      let lastTtsMetrics = null;
+      let ttsMetrics = null;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -213,21 +217,29 @@ export default function Home() {
               const data = JSON.parse(line.slice(6));
 
               if (data.type === 'text') {
+                fullResponseText += data.content;
                 setResponse((prev) => prev + data.content);
               } else if (data.type === 'audio') {
                 // Add audio to sequence buffer
                 addSequenceAudio(data.playSequence, data.audio, data.contentType);
-                lastTtsMetrics = data.metrics;
+                // Keep track of individual chunk metrics as fallback
+                if (data.metrics) {
+                  ttsMetrics = data.metrics;
+                }
               } else if (data.type === 'audio_complete') {
                 // Mark sequence as complete - ready to play in order
                 markSequenceComplete(data.playSequence);
               } else if (data.type === 'done') {
                 llmMetrics = data.llmMetrics;
+                // Use aggregated TTS metrics from server if available
+                if (data.ttsMetrics) {
+                  ttsMetrics = data.ttsMetrics;
+                }
                 const totalTime = Date.now() - startTime;
 
                 setCurrentMetrics({
                   llmMetrics,
-                  ttsMetrics: lastTtsMetrics,
+                  ttsMetrics,
                   totalTime,
                 });
 
@@ -236,8 +248,10 @@ export default function Home() {
                   llmModel,
                   ttsProvider,
                   llmMetrics,
-                  ttsMetrics: lastTtsMetrics,
+                  ttsMetrics,
                   totalTime,
+                  query,
+                  responseText: fullResponseText,
                 });
               } else if (data.type === 'error') {
                 throw new Error(data.error);
