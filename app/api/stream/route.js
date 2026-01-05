@@ -2,16 +2,30 @@
 
 import { registry } from '@/lib/providers/registry';
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "http://localhost:3013",
-  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization",
-};
+const allowedOrigins = [
+  "http://localhost:3013",
+  "https://app.ultronai.me",
+  "https://dev-app.ultronai.me"
+];
+function getCorsHeaders(request) {
+  const origin = request.headers.get("origin");
 
-export async function OPTIONS() {
+  const headers = {
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  };
+
+  if (origin && allowedOrigins.includes(origin)) {
+    headers["Access-Control-Allow-Origin"] = origin;
+  }
+
+  return headers;
+}
+
+export async function OPTIONS(request) {
   return new Response(null, {
     status: 204,
-    headers: corsHeaders,
+    headers: getCorsHeaders(request),
   });
 }
 
@@ -182,7 +196,7 @@ export async function POST(request) {
 
     return new Response(stream, {
       headers: {
-        ...corsHeaders,
+        ...getCorsHeaders(request),
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
         'Connection': 'keep-alive',
