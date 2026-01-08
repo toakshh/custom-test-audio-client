@@ -5,7 +5,8 @@ import { registry } from '@/lib/providers/registry';
 const allowedOrigins = [
   "http://localhost:3013",
   "https://app.ultronai.me",
-  "https://dev-app.ultronai.me"
+  "https://dev-app.ultronai.me",
+  "http://localhost:3000",
 ];
 function getCorsHeaders(request) {
   const origin = request.headers.get("origin");
